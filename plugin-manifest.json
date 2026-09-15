@@ -1,0 +1,17 @@
+{
+  "widgets": [
+    {
+      "name": "proposal_and_quotation_widget",
+      "displayName": "Proposal and Quotation",
+      "location": {
+        "web": [
+          {
+            "module": "Leads",
+            "view": "blueprint",
+            "url": "widget.html"
+          }
+        ]
+      }
+    }
+  ]
+}

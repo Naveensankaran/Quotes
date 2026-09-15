@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Proposal and Quotation</title>
+  <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; font-size: 13px; color: #333; }
+    .field-row { margin-bottom: 14px; max-width: 340px; }
+    label { display: block; font-weight: 600; margin-bottom: 4px; }
+    input, select {
+      width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+    }
+    input[disabled] { background: #f5f5f5; color: #666; }
+    h4 { margin: 18px 0 6px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 12px; }
+    th { background: #fafafa; }
+    td.remove-cell { text-align: center; width: 34px; }
+    .remove-btn {
+      width: 24px; height: 24px; border-radius: 50%; border: 1px solid #c00; color: #c00;
+      background: white; cursor: pointer; font-weight: bold; line-height: 1;
+    }
+    #addRowBtn {
+      margin-top: 8px; padding: 6px 12px; border: 1px solid #1a73e8; color: #1a73e8;
+      background: white; border-radius: 4px; cursor: pointer;
+    }
+    .totals-wrap { display: flex; justify-content: flex-end; margin-top: 18px; }
+    .totals-box { width: 260px; }
+    .totals-box .field-row { max-width: none; display: flex; align-items: center; justify-content: space-between; }
+    .totals-box label { margin-bottom: 0; }
+    .totals-box input { width: 130px; text-align: right; }
+    .actions { margin-top: 22px; text-align: right; }
+    .actions button { padding: 8px 18px; border-radius: 4px; border: none; cursor: pointer; margin-left: 8px; }
+    #saveBtn { background: #1a73e8; color: white; }
+    #cancelBtn { background: #eee; color: #333; }
+    #status { margin-top: 10px; font-size: 12px; color: #c00; min-height: 16px; }
+  </style>
+</head>
+<body>
+
+  <div class="field-row">
+    <label>Subject</label>
+    <input type="text" id="subject" />
+  </div>
+
+  <div class="field-row">
+    <label>Project (from Lead)</label>
+    <input type="text" id="projectDisplay" disabled />
+  </div>
+
+  <h4>Quoted Items</h4>
+  <table id="itemsTable">
+    <thead>
+      <tr>
+        <th>Project</th>
+        <th>Tower</th>
+        <th>Floor</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="itemRows"></tbody>
+  </table>
+  <button id="addRowBtn" type="button">+ Add row</button>
+
+  <div class="totals-wrap">
+    <div class="totals-box">
+      <div class="field-row"><label>Sub Total (Rs.)</label><input type="number" id="subTotal" value="0" /></div>
+      <div class="field-row"><label>Discount (Rs.)</label><input type="number" id="discount" value="0" /></div>
+      <div class="field-row"><label>Tax (Rs.)</label><input type="number" id="tax" value="0" /></div>
+      <div class="field-row"><label>Adjustment (Rs.)</label><input type="number" id="adjustment" value="0" /></div>
+      <div class="field-row"><label>Grand Total (Rs.)</label><input type="number" id="grandTotal" value="0" disabled /></div>
+    </div>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="actions">
+    <button id="cancelBtn" type="button">Cancel</button>
+    <button id="saveBtn" type="button">Save</button>
+  </div>
+
+<script>
+var leadEntityId = null;
+var leadProject = null;   // { id, name } — from the Lead's Project lookup
+var towerCache = [];      // Tower records for this Project
+var rowCounter = 0;
+
+// ---------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------
+ZOHO.embeddedApp.on("PageLoad", function (data) {
+  leadEntityId = data.EntityId;
+  loadLeadProject();
+});
+ZOHO.embeddedApp.init();
+
+function loadLeadProject() {
+  ZOHO.CRM.API.getRecord({ Entity: "Leads", RecordID: leadEntityId })
+    .then(function (res) {
+      var lead = res.data[0];
+      var proj = lead.Project; // adjust key if the Lead's Project field API name differs
+      if (proj) {
+        leadProject = { id: proj.id, name: proj.name };
+        document.getElementById("projectDisplay").value = proj.name;
+        loadTowersForProject(proj.id);
+      } else {
+        document.getElementById("projectDisplay").value = "(no project on lead)";
+      }
+      addRow(); // seed first row
+    })
+    .catch(function (err) {
+      showStatus("Could not load Lead: " + JSON.stringify(err));
+    });
+}
+
+// ---------------------------------------------------------------
+// Cascading lookups: Tower filtered by Project, Floor filtered by Tower
+// NOTE: assumes Tower module has a "Project" lookup field and Floor module
+// has a "Tower" lookup field. Confirm these API names in your org before relying on this.
+// ---------------------------------------------------------------
+function loadTowersForProject(projectId) {
+  ZOHO.CRM.API.searchRecord({
+    Entity: "Tower",
+    Type: "criteria",
+    Query: "(Project:equals:" + projectId + ")"
+  }).then(function (res) {
+    towerCache = (res.data || []);
+    document.querySelectorAll(".row-tower").forEach(populateTowerSelect);
+  }).catch(function (err) {
+    showStatus("Could not load Towers: " + JSON.stringify(err));
+  });
+}
+
+function populateTowerSelect(select) {
+  select.innerHTML = '<option value="">-- select tower --</option>';
+  towerCache.forEach(function (t) {
+    var opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.Name || t.Tower_Name || t.id;
+    select.appendChild(opt);
+  });
+}
+
+function loadFloorsForTower(towerId, floorSelect) {
+  floorSelect.innerHTML = '<option value="">-- loading --</option>';
+  ZOHO.CRM.API.searchRecord({
+    Entity: "Floor",
+    Type: "criteria",
+    Query: "(Tower:equals:" + towerId + ")"
+  }).then(function (res) {
+    var floors = res.data || [];
+    floorSelect.innerHTML = '<option value="">-- select floor --</option>';
+    floors.forEach(function (f) {
+      var opt = document.createElement("option");
+      opt.value = f.id;
+      opt.textContent = f.Name || f.Floor_Name || f.id;
+      floorSelect.appendChild(opt);
+    });
+  }).catch(function (err) {
+    floorSelect.innerHTML = '<option value="">-- error loading --</option>';
+    showStatus("Could not load Floors: " + JSON.stringify(err));
+  });
+}
+
+// ---------------------------------------------------------------
+// Row management
+// ---------------------------------------------------------------
+function addRow() {
+  rowCounter++;
+  var tbody = document.getElementById("itemRows");
+  var row = document.createElement("tr");
+  row.dataset.rowId = rowCounter;
+
+  var isFirstRow = tbody.children.length === 0;
+  var projectName = leadProject ? leadProject.name : "";
+
+  row.innerHTML =
+    '<td><input class="row-project" value="' + projectName + '" disabled /></td>' +
+    '<td><select class="row-tower"><option value="">-- select tower --</option></select></td>' +
+    '<td><select class="row-floor" disabled><option value="">-- select tower first --</option></select></td>' +
+    '<td class="remove-cell">' + (isFirstRow ? "" : '<button class="remove-btn" type="button" title="Remove row">-</button>') + '</td>';
+
+  tbody.appendChild(row);
+
+  var towerSelect = row.querySelector(".row-tower");
+  var floorSelect = row.querySelector(".row-floor");
+  populateTowerSelect(towerSelect);
+
+  towerSelect.addEventListener("change", function () {
+    if (towerSelect.value) {
+      floorSelect.disabled = false;
+      loadFloorsForTower(towerSelect.value, floorSelect);
+    } else {
+      floorSelect.disabled = true;
+      floorSelect.innerHTML = '<option value="">-- select tower first --</option>';
+    }
+  });
+
+  var removeBtn = row.querySelector(".remove-btn");
+  if (removeBtn) {
+    removeBtn.addEventListener("click", function () {
+      row.remove();
+    });
+  }
+}
+document.getElementById("addRowBtn").addEventListener("click", addRow);
+
+// ---------------------------------------------------------------
+// Totals: live Grand Total calc = SubTotal - Discount + Tax + Adjustment
+// ---------------------------------------------------------------
+function recalcGrandTotal() {
+  var sub = parseFloat(document.getElementById("subTotal").value) || 0;
+  var disc = parseFloat(document.getElementById("discount").value) || 0;
+  var tax = parseFloat(document.getElementById("tax").value) || 0;
+  var adj = parseFloat(document.getElementById("adjustment").value) || 0;
+  var grand = sub - disc + tax + adj;
+  document.getElementById("grandTotal").value = grand.toFixed(2);
+}
+["subTotal", "discount", "tax", "adjustment"].forEach(function (id) {
+  document.getElementById(id).addEventListener("input", recalcGrandTotal);
+});
+
+// ---------------------------------------------------------------
+// Cancel
+// ---------------------------------------------------------------
+document.getElementById("cancelBtn").addEventListener("click", function () {
+  ZOHO.CRM.UI.Popup.close();
+});
+
+// ---------------------------------------------------------------
+// Save
+// ---------------------------------------------------------------
+document.getElementById("saveBtn").addEventListener("click", function () {
+  var subject = document.getElementById("subject").value.trim();
+  if (!subject) { showStatus("Subject is required."); return; }
+  if (!leadProject) { showStatus("No Project found on the Lead — cannot proceed."); return; }
+
+  var rows = document.querySelectorAll("#itemRows tr");
+  var quotedItems = [];
+  var missingSelection = false;
+
+  rows.forEach(function (row) {
+    var towerVal = row.querySelector(".row-tower").value;
+    var floorVal = row.querySelector(".row-floor").value;
+    if (!towerVal || !floorVal) { missingSelection = true; }
+
+    quotedItems.push({
+      // Subform's Project field looks up the "Unit" module — leadProject.id
+      // must actually be a valid Unit record id, otherwise this will fail
+      // validation on save. Confirm the Lead->Unit mapping before relying on this.
+      Project: { id: leadProject.id },
+      Tower: { id: towerVal },
+      Floor: { id: floorVal }
+    });
+  });
+
+  if (missingSelection) {
+    showStatus("Please select Tower and Floor on every row before saving.");
+    return;
+  }
+
+  var recordData = {
+    Subject: subject,
+    Quoted_Items: quotedItems,
+    Sub_Total: parseFloat(document.getElementById("subTotal").value) || 0,
+    Discount: parseFloat(document.getElementById("discount").value) || 0,
+    Tax: parseFloat(document.getElementById("tax").value) || 0,
+    Adjustment: parseFloat(document.getElementById("adjustment").value) || 0,
+    Grand_Total: parseFloat(document.getElementById("grandTotal").value) || 0
+  };
+
+  ZOHO.CRM.API.insertRecord({ Entity: "Quotes", APIData: recordData })
+    .then(function () {
+      showStatus("Quote created successfully.");
+      ZOHO.CRM.UI.Popup.close();
+    })
+    .catch(function (err) {
+      showStatus("Save failed: " + JSON.stringify(err));
+    });
+});
+
+function showStatus(msg) {
+  document.getElementById("status").innerText = msg;
+}
+</script>
+
+</body>
+</html>
