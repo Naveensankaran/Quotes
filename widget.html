@@ -54,7 +54,7 @@
   <table id="itemsTable">
     <thead>
       <tr>
-        <th>Project 2</th>
+        <th>Project 3</th>
         <th>Tower</th>
         <th>Floor</th>
         <th>Unit Name</th>
@@ -342,16 +342,14 @@ document.getElementById("saveBtn").addEventListener("click", function () {
     if (!towerVal || !floorVal || !unitVal) { missingSelection = true; }
 
     quotedItems.push({
-      Project: { id: leadProject.id },
-      Tower: { id: towerVal },
-      Floor: { id: floorVal },
-      product: { id: unitVal },        
-      Product_Name: { id: unitVal }, // subform's Unit lookup field is "Product_Name" per the metadata dump
-      Quantity: parseFloat(row.querySelector(".row-qty").value) || 1,
-      List_Price: parseFloat(row.querySelector(".row-listprice").value) || 0,
-      Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
-      Tax: parseFloat(row.querySelector(".row-tax").value) || 0
-    });
+  Product_Name: { id: unitVal },   // mandatory
+  Tower: { id: towerVal },
+  Floor: { id: floorVal },
+  Quantity: parseFloat(row.querySelector(".row-qty").value) || 1,
+  List_Price: parseFloat(row.querySelector(".row-listprice").value) || 0,
+  Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
+  Tax: parseFloat(row.querySelector(".row-tax").value) || 0
+});
   });
 
   if (missingSelection) {
@@ -361,13 +359,8 @@ document.getElementById("saveBtn").addEventListener("click", function () {
 
   var recordData = {
     Subject: subject,
-   // Product_Details: quotedItems,
-    Quoted_Items: quotedItems,
-    Sub_Total: parseFloat(document.getElementById("subTotal").value) || 0,
-    Discount: parseFloat(document.getElementById("discountTotal").value) || 0,
-    Tax: parseFloat(document.getElementById("taxTotal").value) || 0,
-    Adjustment: parseFloat(document.getElementById("adjustment").value) || 0,
-    Grand_Total: parseFloat(document.getElementById("grandTotal").value) || 0
+  Quoted_Items: quotedItems,   // only this key — drop Product_Details entirely
+  Adjustment: parseFloat(document.getElementById("adjustment").value) || 0
   };
 
   ZOHO.CRM.API.insertRecord({ Entity: "Quotes", APIData: recordData })
