@@ -11,15 +11,16 @@
     input, select {
       width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
     }
-    input[disabled] { background: #f5f5f5; color: #666; }
+    input[disabled], select[disabled] { background: #f5f5f5; color: #666; }
     h4 { margin: 18px 0 6px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 12px; }
-    th { background: #fafafa; }
-    td.remove-cell { text-align: center; width: 34px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    th, td { border: 1px solid #ddd; padding: 5px; text-align: left; }
+    th { background: #fafafa; white-space: nowrap; }
+    td input, td select { padding: 4px 6px; font-size: 12px; }
+    td.remove-cell { text-align: center; width: 30px; }
     .remove-btn {
-      width: 24px; height: 24px; border-radius: 50%; border: 1px solid #c00; color: #c00;
-      background: white; cursor: pointer; font-weight: bold; line-height: 1;
+      width: 22px; height: 22px; border-radius: 50%; border: 1px solid #c00; color: #c00;
+      background: white; cursor: pointer; font-weight: bold; line-height: 1; padding: 0;
     }
     #addRowBtn {
       margin-top: 8px; padding: 6px 12px; border: 1px solid #1a73e8; color: #1a73e8;
@@ -29,7 +30,7 @@
     .totals-box { width: 260px; }
     .totals-box .field-row { max-width: none; display: flex; align-items: center; justify-content: space-between; }
     .totals-box label { margin-bottom: 0; }
-    .totals-box input { width: 130px; text-align: right; }
+    .totals-box input { width: 140px; text-align: right; }
     .actions { margin-top: 22px; text-align: right; }
     .actions button { padding: 8px 18px; border-radius: 4px; border: none; cursor: pointer; margin-left: 8px; }
     #saveBtn { background: #1a73e8; color: white; }
@@ -56,6 +57,13 @@
         <th>Project</th>
         <th>Tower</th>
         <th>Floor</th>
+        <th>Unit Name</th>
+        <th>Quantity</th>
+        <th>List Price (Rs.)</th>
+        <th>Amount (Rs.)</th>
+        <th>Discount (Rs.)</th>
+        <th>Tax (Rs.)</th>
+        <th>Total (Rs.)</th>
         <th></th>
       </tr>
     </thead>
@@ -65,9 +73,9 @@
 
   <div class="totals-wrap">
     <div class="totals-box">
-      <div class="field-row"><label>Sub Total (Rs.)</label><input type="number" id="subTotal" value="0" /></div>
-      <div class="field-row"><label>Discount (Rs.)</label><input type="number" id="discount" value="0" /></div>
-      <div class="field-row"><label>Tax (Rs.)</label><input type="number" id="tax" value="0" /></div>
+      <div class="field-row"><label>Sub Total (Rs.)</label><input type="number" id="subTotal" value="0" disabled /></div>
+      <div class="field-row"><label>Discount (Rs.)</label><input type="number" id="discountTotal" value="0" disabled /></div>
+      <div class="field-row"><label>Tax (Rs.)</label><input type="number" id="taxTotal" value="0" disabled /></div>
       <div class="field-row"><label>Adjustment (Rs.)</label><input type="number" id="adjustment" value="0" /></div>
       <div class="field-row"><label>Grand Total (Rs.)</label><input type="number" id="grandTotal" value="0" disabled /></div>
     </div>
@@ -82,9 +90,8 @@
 
 <script>
 var leadEntityId = null;
-var leadProject = null;   // { id, name } — from the Lead's Project lookup
-var towerCache = [];      // Tower records for this Project
-var rowCounter = 0;
+var leadProject = null;   // { id, name }
+var towerCache = [];      // towers for this Project
 
 // ---------------------------------------------------------------
 // Init
@@ -107,7 +114,7 @@ function loadLeadProject() {
       } else {
         document.getElementById("projectDisplay").value = "(no project on lead)";
       }
-      addRow(); // seed first row
+      addRow();
     })
     .catch(function (err) {
       showStatus("Could not load Lead: " + JSON.stringify(err));
@@ -115,9 +122,11 @@ function loadLeadProject() {
 }
 
 // ---------------------------------------------------------------
-// Cascading lookups: Tower filtered by Project, Floor filtered by Tower
-// NOTE: assumes Tower module has a "Project" lookup field and Floor module
-// has a "Tower" lookup field. Confirm these API names in your org before relying on this.
+// Cascading data loaders
+// ASSUMPTIONS (confirm actual API names in your org before relying on this):
+//   Tower module has lookup "Project"
+//   Floor module has lookups "Project" and "Tower"
+//   Unit module has lookups "Project", "Tower", "Floor", and a field "All_Inclusive_Price"
 // ---------------------------------------------------------------
 function loadTowersForProject(projectId) {
   ZOHO.CRM.API.searchRecord({
@@ -125,7 +134,7 @@ function loadTowersForProject(projectId) {
     Type: "criteria",
     Query: "(Project:equals:" + projectId + ")"
   }).then(function (res) {
-    towerCache = (res.data || []);
+    towerCache = res.data || [];
     document.querySelectorAll(".row-tower").forEach(populateTowerSelect);
   }).catch(function (err) {
     showStatus("Could not load Towers: " + JSON.stringify(err));
@@ -142,12 +151,12 @@ function populateTowerSelect(select) {
   });
 }
 
-function loadFloorsForTower(towerId, floorSelect) {
+function loadFloorsForTower(projectId, towerId, floorSelect) {
   floorSelect.innerHTML = '<option value="">-- loading --</option>';
   ZOHO.CRM.API.searchRecord({
     Entity: "Floor",
     Type: "criteria",
-    Query: "(Tower:equals:" + towerId + ")"
+    Query: "((Project:equals:" + projectId + ")and(Tower:equals:" + towerId + "))"
   }).then(function (res) {
     var floors = res.data || [];
     floorSelect.innerHTML = '<option value="">-- select floor --</option>';
@@ -163,15 +172,35 @@ function loadFloorsForTower(towerId, floorSelect) {
   });
 }
 
+function loadUnitsForFloor(projectId, towerId, floorId, unitSelect) {
+  unitSelect.innerHTML = '<option value="">-- loading --</option>';
+  ZOHO.CRM.API.searchRecord({
+    Entity: "Unit",
+    Type: "criteria",
+    Query: "((Project:equals:" + projectId + ")and(Tower:equals:" + towerId + ")and(Floor:equals:" + floorId + "))"
+  }).then(function (res) {
+    var units = res.data || [];
+    unitSelect.innerHTML = '<option value="">-- select unit --</option>';
+    units.forEach(function (u) {
+      var opt = document.createElement("option");
+      opt.value = u.id;
+      opt.textContent = u.Name || u.Unit_Name || u.id;
+      // stash the price on the option itself so we can read it without a re-fetch
+      opt.dataset.price = u.All_Inclusive_Price || 0;
+      unitSelect.appendChild(opt);
+    });
+  }).catch(function (err) {
+    unitSelect.innerHTML = '<option value="">-- error loading --</option>';
+    showStatus("Could not load Units: " + JSON.stringify(err));
+  });
+}
+
 // ---------------------------------------------------------------
 // Row management
 // ---------------------------------------------------------------
 function addRow() {
-  rowCounter++;
   var tbody = document.getElementById("itemRows");
   var row = document.createElement("tr");
-  row.dataset.rowId = rowCounter;
-
   var isFirstRow = tbody.children.length === 0;
   var projectName = leadProject ? leadProject.name : "";
 
@@ -179,58 +208,124 @@ function addRow() {
     '<td><input class="row-project" value="' + projectName + '" disabled /></td>' +
     '<td><select class="row-tower"><option value="">-- select tower --</option></select></td>' +
     '<td><select class="row-floor" disabled><option value="">-- select tower first --</option></select></td>' +
+    '<td><select class="row-unit" disabled><option value="">-- select floor first --</option></select></td>' +
+    '<td><input class="row-qty" type="number" min="1" value="1" /></td>' +
+    '<td><input class="row-listprice" type="number" value="0" disabled /></td>' +
+    '<td><input class="row-amount" type="number" value="0" disabled /></td>' +
+    '<td><input class="row-discount" type="number" value="0" /></td>' +
+    '<td><input class="row-tax" type="number" value="0" /></td>' +
+    '<td><input class="row-total" type="number" value="0" disabled /></td>' +
     '<td class="remove-cell">' + (isFirstRow ? "" : '<button class="remove-btn" type="button" title="Remove row">-</button>') + '</td>';
 
   tbody.appendChild(row);
 
   var towerSelect = row.querySelector(".row-tower");
   var floorSelect = row.querySelector(".row-floor");
+  var unitSelect = row.querySelector(".row-unit");
+  var qtyInput = row.querySelector(".row-qty");
+  var listPriceInput = row.querySelector(".row-listprice");
+  var discountInput = row.querySelector(".row-discount");
+  var taxInput = row.querySelector(".row-tax");
+
   populateTowerSelect(towerSelect);
 
   towerSelect.addEventListener("change", function () {
-    if (towerSelect.value) {
+    floorSelect.innerHTML = '<option value="">-- select floor --</option>';
+    unitSelect.innerHTML = '<option value="">-- select floor first --</option>';
+    unitSelect.disabled = true;
+    resetRowPricing(row);
+    if (towerSelect.value && leadProject) {
       floorSelect.disabled = false;
-      loadFloorsForTower(towerSelect.value, floorSelect);
+      loadFloorsForTower(leadProject.id, towerSelect.value, floorSelect);
     } else {
       floorSelect.disabled = true;
-      floorSelect.innerHTML = '<option value="">-- select tower first --</option>';
     }
   });
+
+  floorSelect.addEventListener("change", function () {
+    unitSelect.innerHTML = '<option value="">-- select unit --</option>';
+    resetRowPricing(row);
+    if (floorSelect.value && leadProject && towerSelect.value) {
+      unitSelect.disabled = false;
+      loadUnitsForFloor(leadProject.id, towerSelect.value, floorSelect.value, unitSelect);
+    } else {
+      unitSelect.disabled = true;
+    }
+  });
+
+  unitSelect.addEventListener("change", function () {
+    var selectedOpt = unitSelect.options[unitSelect.selectedIndex];
+    var price = selectedOpt ? parseFloat(selectedOpt.dataset.price) || 0 : 0;
+    listPriceInput.value = price;
+    recalcRow(row);
+  });
+
+  qtyInput.addEventListener("input", function () { recalcRow(row); });
+  discountInput.addEventListener("input", function () { recalcRow(row); });
+  taxInput.addEventListener("input", function () { recalcRow(row); });
 
   var removeBtn = row.querySelector(".remove-btn");
   if (removeBtn) {
     removeBtn.addEventListener("click", function () {
       row.remove();
+      recalcGrandTotal();
     });
   }
 }
 document.getElementById("addRowBtn").addEventListener("click", addRow);
 
-// ---------------------------------------------------------------
-// Totals: live Grand Total calc = SubTotal - Discount + Tax + Adjustment
-// ---------------------------------------------------------------
-function recalcGrandTotal() {
-  var sub = parseFloat(document.getElementById("subTotal").value) || 0;
-  var disc = parseFloat(document.getElementById("discount").value) || 0;
-  var tax = parseFloat(document.getElementById("tax").value) || 0;
-  var adj = parseFloat(document.getElementById("adjustment").value) || 0;
-  var grand = sub - disc + tax + adj;
-  document.getElementById("grandTotal").value = grand.toFixed(2);
+function resetRowPricing(row) {
+  row.querySelector(".row-listprice").value = 0;
+  recalcRow(row);
 }
-["subTotal", "discount", "tax", "adjustment"].forEach(function (id) {
-  document.getElementById(id).addEventListener("input", recalcGrandTotal);
-});
 
 // ---------------------------------------------------------------
-// Cancel
+// Row-level and aggregate calculations
+//   Amount = Quantity * List Price
+//   Total  = Amount - Discount + Tax
+// ---------------------------------------------------------------
+function recalcRow(row) {
+  var qty = parseFloat(row.querySelector(".row-qty").value) || 0;
+  var listPrice = parseFloat(row.querySelector(".row-listprice").value) || 0;
+  var discount = parseFloat(row.querySelector(".row-discount").value) || 0;
+  var tax = parseFloat(row.querySelector(".row-tax").value) || 0;
+
+  var amount = qty * listPrice;
+  var total = amount - discount + tax;
+
+  row.querySelector(".row-amount").value = amount.toFixed(2);
+  row.querySelector(".row-total").value = total.toFixed(2);
+
+  recalcGrandTotal();
+}
+
+function recalcGrandTotal() {
+  var rows = document.querySelectorAll("#itemRows tr");
+  var subTotal = 0, discountTotal = 0, taxTotal = 0;
+
+  rows.forEach(function (row) {
+    subTotal += parseFloat(row.querySelector(".row-amount").value) || 0;
+    discountTotal += parseFloat(row.querySelector(".row-discount").value) || 0;
+    taxTotal += parseFloat(row.querySelector(".row-tax").value) || 0;
+  });
+
+  var adjustment = parseFloat(document.getElementById("adjustment").value) || 0;
+  var grandTotal = subTotal - discountTotal + taxTotal + adjustment;
+
+  document.getElementById("subTotal").value = subTotal.toFixed(2);
+  document.getElementById("discountTotal").value = discountTotal.toFixed(2);
+  document.getElementById("taxTotal").value = taxTotal.toFixed(2);
+  document.getElementById("grandTotal").value = grandTotal.toFixed(2);
+}
+document.getElementById("adjustment").addEventListener("input", recalcGrandTotal);
+
+// ---------------------------------------------------------------
+// Cancel / Save
 // ---------------------------------------------------------------
 document.getElementById("cancelBtn").addEventListener("click", function () {
   ZOHO.CRM.UI.Popup.close();
 });
 
-// ---------------------------------------------------------------
-// Save
-// ---------------------------------------------------------------
 document.getElementById("saveBtn").addEventListener("click", function () {
   var subject = document.getElementById("subject").value.trim();
   if (!subject) { showStatus("Subject is required."); return; }
@@ -243,20 +338,23 @@ document.getElementById("saveBtn").addEventListener("click", function () {
   rows.forEach(function (row) {
     var towerVal = row.querySelector(".row-tower").value;
     var floorVal = row.querySelector(".row-floor").value;
-    if (!towerVal || !floorVal) { missingSelection = true; }
+    var unitVal = row.querySelector(".row-unit").value;
+    if (!towerVal || !floorVal || !unitVal) { missingSelection = true; }
 
     quotedItems.push({
-      // Subform's Project field looks up the "Unit" module — leadProject.id
-      // must actually be a valid Unit record id, otherwise this will fail
-      // validation on save. Confirm the Lead->Unit mapping before relying on this.
       Project: { id: leadProject.id },
       Tower: { id: towerVal },
-      Floor: { id: floorVal }
+      Floor: { id: floorVal },
+      Product_Name: { id: unitVal }, // subform's Unit lookup field is "Product_Name" per the metadata dump
+      Quantity: parseFloat(row.querySelector(".row-qty").value) || 1,
+      List_Price: parseFloat(row.querySelector(".row-listprice").value) || 0,
+      Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
+      Tax: parseFloat(row.querySelector(".row-tax").value) || 0
     });
   });
 
   if (missingSelection) {
-    showStatus("Please select Tower and Floor on every row before saving.");
+    showStatus("Please select Tower, Floor and Unit on every row before saving.");
     return;
   }
 
@@ -264,8 +362,8 @@ document.getElementById("saveBtn").addEventListener("click", function () {
     Subject: subject,
     Quoted_Items: quotedItems,
     Sub_Total: parseFloat(document.getElementById("subTotal").value) || 0,
-    Discount: parseFloat(document.getElementById("discount").value) || 0,
-    Tax: parseFloat(document.getElementById("tax").value) || 0,
+    Discount: parseFloat(document.getElementById("discountTotal").value) || 0,
+    Tax: parseFloat(document.getElementById("taxTotal").value) || 0,
     Adjustment: parseFloat(document.getElementById("adjustment").value) || 0,
     Grand_Total: parseFloat(document.getElementById("grandTotal").value) || 0
   };
