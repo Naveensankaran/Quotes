@@ -156,7 +156,7 @@ function loadFloorsForTower(projectId, towerId, floorSelect) {
   ZOHO.CRM.API.searchRecord({
     Entity: "Floor",
     Type: "criteria",
-    Query: "((Project:equals:" + projectId + ")and(Tower:equals:" + towerId + "))"
+    Query: "((Project:equals:" + projectId + ")and(Tower_Name:equals:" + towerId + "))"
   }).then(function (res) {
     var floors = res.data || [];
     floorSelect.innerHTML = '<option value="">-- select floor --</option>';
