@@ -54,13 +54,10 @@
   <table id="itemsTable">
     <thead>
       <tr>
-        <th>Project 4</th>
         <th>Tower</th>
         <th>Floor</th>
         <th>Unit Name</th>
-        <th>Quantity</th>
         <th>List Price (Rs.)</th>
-        <th>Amount (Rs.)</th>
         <th>Discount (Rs.)</th>
         <th>Tax (Rs.)</th>
         <th>Total (Rs.)</th>
@@ -89,13 +86,13 @@
   </div>
 
 <script>
+// TODO: replace with the real api_name from the findleadfield() Deluge script above
+var LEAD_LOOKUP_API_NAME = "Lead";
+
 var leadEntityId = null;
 var leadProject = null;   // { id, name }
 var towerCache = [];      // towers for this Project
 
-// ---------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------
 ZOHO.embeddedApp.on("PageLoad", function (data) {
   leadEntityId = data.EntityId;
   loadLeadProject();
@@ -106,7 +103,7 @@ function loadLeadProject() {
   ZOHO.CRM.API.getRecord({ Entity: "Leads", RecordID: leadEntityId })
     .then(function (res) {
       var lead = res.data[0];
-      var proj = lead.Project; // adjust key if the Lead's Project field API name differs
+      var proj = lead.Project;
       if (proj) {
         leadProject = { id: proj.id, name: proj.name };
         document.getElementById("projectDisplay").value = proj.name;
@@ -121,13 +118,6 @@ function loadLeadProject() {
     });
 }
 
-// ---------------------------------------------------------------
-// Cascading data loaders
-// ASSUMPTIONS (confirm actual API names in your org before relying on this):
-//   Tower module has lookup "Project"
-//   Floor module has lookups "Project" and "Tower"
-//   Unit module has lookups "Project", "Tower", "Floor", and a field "All_Inclusive_Price"
-// ---------------------------------------------------------------
 function loadTowersForProject(projectId) {
   ZOHO.CRM.API.searchRecord({
     Entity: "Tower",
@@ -185,7 +175,6 @@ function loadUnitsForFloor(projectId, towerId, floorId, unitSelect) {
       var opt = document.createElement("option");
       opt.value = u.id;
       opt.textContent = u.Name || u.Product_Name || u.id;
-      // stash the price on the option itself so we can read it without a re-fetch
       opt.dataset.price = u.Unit_Price || 0;
       unitSelect.appendChild(opt);
     });
@@ -195,23 +184,16 @@ function loadUnitsForFloor(projectId, towerId, floorId, unitSelect) {
   });
 }
 
-// ---------------------------------------------------------------
-// Row management
-// ---------------------------------------------------------------
 function addRow() {
   var tbody = document.getElementById("itemRows");
   var row = document.createElement("tr");
   var isFirstRow = tbody.children.length === 0;
-  var projectName = leadProject ? leadProject.name : "";
 
   row.innerHTML =
-    '<td><input class="row-project" value="' + projectName + '" disabled /></td>' +
     '<td><select class="row-tower"><option value="">-- select tower --</option></select></td>' +
     '<td><select class="row-floor" disabled><option value="">-- select tower first --</option></select></td>' +
     '<td><select class="row-unit" disabled><option value="">-- select floor first --</option></select></td>' +
-    '<td><input class="row-qty" type="number" min="1" value="1" /></td>' +
     '<td><input class="row-listprice" type="number" value="0" disabled /></td>' +
-    '<td><input class="row-amount" type="number" value="0" disabled /></td>' +
     '<td><input class="row-discount" type="number" value="0" /></td>' +
     '<td><input class="row-tax" type="number" value="0" /></td>' +
     '<td><input class="row-total" type="number" value="0" disabled /></td>' +
@@ -222,7 +204,6 @@ function addRow() {
   var towerSelect = row.querySelector(".row-tower");
   var floorSelect = row.querySelector(".row-floor");
   var unitSelect = row.querySelector(".row-unit");
-  var qtyInput = row.querySelector(".row-qty");
   var listPriceInput = row.querySelector(".row-listprice");
   var discountInput = row.querySelector(".row-discount");
   var taxInput = row.querySelector(".row-tax");
@@ -260,7 +241,6 @@ function addRow() {
     recalcRow(row);
   });
 
-  qtyInput.addEventListener("input", function () { recalcRow(row); });
   discountInput.addEventListener("input", function () { recalcRow(row); });
   taxInput.addEventListener("input", function () { recalcRow(row); });
 
@@ -279,21 +259,12 @@ function resetRowPricing(row) {
   recalcRow(row);
 }
 
-// ---------------------------------------------------------------
-// Row-level and aggregate calculations
-//   Amount = Quantity * List Price
-//   Total  = Amount - Discount + Tax
-// ---------------------------------------------------------------
 function recalcRow(row) {
-  var qty = parseFloat(row.querySelector(".row-qty").value) || 0;
   var listPrice = parseFloat(row.querySelector(".row-listprice").value) || 0;
   var discount = parseFloat(row.querySelector(".row-discount").value) || 0;
   var tax = parseFloat(row.querySelector(".row-tax").value) || 0;
 
-  var amount = qty * listPrice;
-  var total = amount - discount + tax;
-
-  row.querySelector(".row-amount").value = amount.toFixed(2);
+  var total = listPrice - discount + tax;
   row.querySelector(".row-total").value = total.toFixed(2);
 
   recalcGrandTotal();
@@ -304,7 +275,7 @@ function recalcGrandTotal() {
   var subTotal = 0, discountTotal = 0, taxTotal = 0;
 
   rows.forEach(function (row) {
-    subTotal += parseFloat(row.querySelector(".row-amount").value) || 0;
+    subTotal += parseFloat(row.querySelector(".row-listprice").value) || 0;
     discountTotal += parseFloat(row.querySelector(".row-discount").value) || 0;
     taxTotal += parseFloat(row.querySelector(".row-tax").value) || 0;
   });
@@ -319,9 +290,6 @@ function recalcGrandTotal() {
 }
 document.getElementById("adjustment").addEventListener("input", recalcGrandTotal);
 
-// ---------------------------------------------------------------
-// Cancel / Save
-// ---------------------------------------------------------------
 document.getElementById("cancelBtn").addEventListener("click", function () {
   ZOHO.CRM.UI.Popup.close();
 });
@@ -342,14 +310,13 @@ document.getElementById("saveBtn").addEventListener("click", function () {
     var unitVal = row.querySelector(".row-unit").value;
     if (!towerVal || !floorVal || !unitVal) { missingSelection = true; }
 
-    var qty = parseFloat(row.querySelector(".row-qty").value) || 1;
     var listPrice = parseFloat(row.querySelector(".row-listprice").value) || 0;
 
     quotedItems.push({
       Product_Name: { id: unitVal },
       Tower: { id: towerVal },
       Floor: { id: floorVal },
-      Quantity: qty,
+      Quantity: 1,
       List_Price: listPrice,
       Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
       Tax: parseFloat(row.querySelector(".row-tax").value) || 0
@@ -357,7 +324,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
 
     productDetailsItems.push({
       product: { id: unitVal },
-      quantity: qty,
+      quantity: 1,
       list_price: listPrice
     });
   });
@@ -373,6 +340,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
     Product_Details: productDetailsItems,
     Adjustment: parseFloat(document.getElementById("adjustment").value) || 0
   };
+  recordData[LEAD_LOOKUP_API_NAME] = { id: leadEntityId };
 
   ZOHO.CRM.API.insertRecord({ Entity: "Quotes", APIData: recordData })
     .then(function () {
