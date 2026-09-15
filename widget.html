@@ -184,9 +184,9 @@ function loadUnitsForFloor(projectId, towerId, floorId, unitSelect) {
     units.forEach(function (u) {
       var opt = document.createElement("option");
       opt.value = u.id;
-      opt.textContent = u.Name || u.Unit_Name || u.id;
+      opt.textContent = u.Name || u.Product_Name || u.id;
       // stash the price on the option itself so we can read it without a re-fetch
-      opt.dataset.price = u.All_Inclusive_Price || 0;
+      opt.dataset.price = u.Unit_Price || 0;
       unitSelect.appendChild(opt);
     });
   }).catch(function (err) {
