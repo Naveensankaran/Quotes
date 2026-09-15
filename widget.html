@@ -175,7 +175,7 @@ function loadFloorsForTower(projectId, towerId, floorSelect) {
 function loadUnitsForFloor(projectId, towerId, floorId, unitSelect) {
   unitSelect.innerHTML = '<option value="">-- loading --</option>';
   ZOHO.CRM.API.searchRecord({
-    Entity: "Unit",
+    Entity: "Products",
     Type: "criteria",
     Query: "((Project:equals:" + projectId + ")and(Tower:equals:" + towerId + ")and(Floor:equals:" + floorId + "))"
   }).then(function (res) {
