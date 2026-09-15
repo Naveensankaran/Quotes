@@ -54,7 +54,7 @@
   <table id="itemsTable">
     <thead>
       <tr>
-        <th>Project 1</th>
+        <th>Project 2</th>
         <th>Tower</th>
         <th>Floor</th>
         <th>Unit Name</th>
@@ -345,6 +345,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
       Project: { id: leadProject.id },
       Tower: { id: towerVal },
       Floor: { id: floorVal },
+      product: { id: unitVal },        
       Product_Name: { id: unitVal }, // subform's Unit lookup field is "Product_Name" per the metadata dump
       Quantity: parseFloat(row.querySelector(".row-qty").value) || 1,
       List_Price: parseFloat(row.querySelector(".row-listprice").value) || 0,
@@ -360,7 +361,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
 
   var recordData = {
     Subject: subject,
-    Product_Details: quotedItems,
+   // Product_Details: quotedItems,
     Quoted_Items: quotedItems,
     Sub_Total: parseFloat(document.getElementById("subTotal").value) || 0,
     Discount: parseFloat(document.getElementById("discountTotal").value) || 0,
