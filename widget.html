@@ -54,7 +54,7 @@
   <table id="itemsTable">
     <thead>
       <tr>
-        <th>Project 3</th>
+        <th>Project 4</th>
         <th>Tower</th>
         <th>Floor</th>
         <th>Unit Name</th>
@@ -333,6 +333,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
 
   var rows = document.querySelectorAll("#itemRows tr");
   var quotedItems = [];
+  var productDetailsItems = [];
   var missingSelection = false;
 
   rows.forEach(function (row) {
@@ -341,15 +342,24 @@ document.getElementById("saveBtn").addEventListener("click", function () {
     var unitVal = row.querySelector(".row-unit").value;
     if (!towerVal || !floorVal || !unitVal) { missingSelection = true; }
 
+    var qty = parseFloat(row.querySelector(".row-qty").value) || 1;
+    var listPrice = parseFloat(row.querySelector(".row-listprice").value) || 0;
+
     quotedItems.push({
-  Product_Name: { id: unitVal },   // mandatory
-  Tower: { id: towerVal },
-  Floor: { id: floorVal },
-  Quantity: parseFloat(row.querySelector(".row-qty").value) || 1,
-  List_Price: parseFloat(row.querySelector(".row-listprice").value) || 0,
-  Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
-  Tax: parseFloat(row.querySelector(".row-tax").value) || 0
-});
+      Product_Name: { id: unitVal },
+      Tower: { id: towerVal },
+      Floor: { id: floorVal },
+      Quantity: qty,
+      List_Price: listPrice,
+      Discount: parseFloat(row.querySelector(".row-discount").value) || 0,
+      Tax: parseFloat(row.querySelector(".row-tax").value) || 0
+    });
+
+    productDetailsItems.push({
+      product: { id: unitVal },
+      quantity: qty,
+      list_price: listPrice
+    });
   });
 
   if (missingSelection) {
@@ -359,8 +369,9 @@ document.getElementById("saveBtn").addEventListener("click", function () {
 
   var recordData = {
     Subject: subject,
-  Quoted_Items: quotedItems,   // only this key — drop Product_Details entirely
-  Adjustment: parseFloat(document.getElementById("adjustment").value) || 0
+    Quoted_Items: quotedItems,
+    Product_Details: productDetailsItems,
+    Adjustment: parseFloat(document.getElementById("adjustment").value) || 0
   };
 
   ZOHO.CRM.API.insertRecord({ Entity: "Quotes", APIData: recordData })
