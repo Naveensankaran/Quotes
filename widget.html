@@ -36,6 +36,28 @@
     #saveBtn { background: #1a73e8; color: white; }
     #cancelBtn { background: #eee; color: #333; }
     #status { margin-top: 10px; font-size: 12px; color: #c00; min-height: 16px; }
+
+    .discount-cell { display: flex; align-items: center; gap: 4px; }
+    .discount-cell input { flex: 1; background: #f5f5f5; color: #666; }
+    .edit-pencil-btn {
+      width: 22px; height: 22px; flex-shrink: 0; border-radius: 4px; border: 1px solid #ccc;
+      background: white; cursor: pointer; font-size: 12px; padding: 0; line-height: 1;
+    }
+    .edit-pencil-btn:hover { background: #f0f6ff; border-color: #1a73e8; }
+
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.35); align-items: center; justify-content: center; z-index: 1000;
+    }
+    .modal-box { background: white; border-radius: 6px; padding: 18px 20px; width: 300px; box-shadow: 0 4px 18px rgba(0,0,0,0.25); }
+    .modal-box h4 { margin: 0 0 14px; font-size: 14px; }
+    .modal-radio-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .modal-radio-row label { font-weight: 400; display: flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; }
+    .modal-radio-row input[type="number"] { width: 70px; padding: 4px 6px; }
+    .modal-actions { text-align: right; margin-top: 16px; }
+    .modal-actions button { padding: 6px 16px; border-radius: 4px; border: none; cursor: pointer; margin-left: 8px; font-size: 13px; }
+    #discountModalDoneBtn { background: #1a73e8; color: white; }
+    #discountModalCancelBtn { background: #eee; color: #333; }
   </style>
 </head>
 <body>
@@ -71,7 +93,13 @@
   <div class="totals-wrap">
     <div class="totals-box">
       <div class="field-row"><label>Sub Total (Rs.)</label><input type="number" id="subTotal" value="0" disabled /></div>
-      <div class="field-row"><label>Discount (Rs.)</label><input type="number" id="discountTotal" value="0" disabled /></div>
+      <div class="field-row">
+        <label>Discount (Rs.)</label>
+        <div class="discount-cell">
+          <input type="number" id="discountTotal" value="0" readonly />
+          <button id="grandDiscountEditBtn" class="edit-pencil-btn" type="button" title="Set discount">&#9998;</button>
+        </div>
+      </div>
       <div class="field-row"><label>Tax (Rs.)</label><input type="number" id="taxTotal" value="0" disabled /></div>
       <div class="field-row"><label>Adjustment (Rs.)</label><input type="number" id="adjustment" value="0" /></div>
       <div class="field-row"><label>Grand Total (Rs.)</label><input type="number" id="grandTotal" value="0" disabled /></div>
@@ -79,6 +107,26 @@
   </div>
 
   <div id="status"></div>
+
+  <div id="discountModalOverlay" class="modal-overlay">
+    <div class="modal-box">
+      <h4>Set Discount</h4>
+      <div class="modal-radio-row">
+        <label><input type="radio" name="discountModalType" id="discountTypePercentage" checked /> Percentage</label>
+        <input type="number" id="discountModalPercentInput" value="0" min="0" max="100" />
+        <span>%</span>
+      </div>
+      <div class="modal-radio-row">
+        <label><input type="radio" name="discountModalType" id="discountTypeFlat" /> Direct Price Reduction</label>
+        <input type="number" id="discountModalFlatInput" value="0" min="0" disabled />
+        <span>Rs.</span>
+      </div>
+      <div class="modal-actions">
+        <button id="discountModalCancelBtn" type="button">Cancel</button>
+        <button id="discountModalDoneBtn" type="button">Done</button>
+      </div>
+    </div>
+  </div>
 
   <div class="actions">
     <button id="cancelBtn" type="button">Cancel</button>
@@ -92,6 +140,11 @@ var LEAD_LOOKUP_API_NAME = "Lead";
 var leadEntityId = null;
 var leadProject = null;   // { id, name }
 var towerCache = [];      // towers for this Project
+
+var discountModalTarget = null;   // a <tr> row element, or the string "grand"
+window.grandDiscountType = "percentage";
+window.grandDiscountPercent = 0;
+window.grandDiscountFlat = 0;
 
 ZOHO.embeddedApp.on("PageLoad", function (data) {
   leadEntityId = data.EntityId;
@@ -194,7 +247,7 @@ function addRow() {
     '<td><select class="row-floor" disabled><option value="">-- select tower first --</option></select></td>' +
     '<td><select class="row-unit" disabled><option value="">-- select floor first --</option></select></td>' +
     '<td><input class="row-listprice" type="number" value="0" disabled /></td>' +
-    '<td><input class="row-discount" type="number" value="0" /></td>' +
+    '<td><div class="discount-cell"><input class="row-discount" type="number" value="0" readonly /><button class="edit-pencil-btn row-discount-edit" type="button" title="Set discount">&#9998;</button></div></td>' +
     '<td><input class="row-tax" type="number" value="0" /></td>' +
     '<td><input class="row-total" type="number" value="0" disabled /></td>' +
     '<td class="remove-cell">' + (isFirstRow ? "" : '<button class="remove-btn" type="button" title="Remove row">-</button>') + '</td>';
@@ -238,11 +291,17 @@ function addRow() {
     var selectedOpt = unitSelect.options[unitSelect.selectedIndex];
     var price = selectedOpt ? parseFloat(selectedOpt.dataset.price) || 0 : 0;
     listPriceInput.value = price;
+    if (row.dataset.discountType === "percentage") {
+      var pct = parseFloat(row.dataset.discountPercent) || 0;
+      discountInput.value = (price * pct / 100).toFixed(2);
+    }
     recalcRow(row);
   });
 
-  discountInput.addEventListener("input", function () { recalcRow(row); });
   taxInput.addEventListener("input", function () { recalcRow(row); });
+
+  var discountEditBtn = row.querySelector(".row-discount-edit");
+  discountEditBtn.addEventListener("click", function () { openDiscountModal(row); });
 
   var removeBtn = row.querySelector(".remove-btn");
   if (removeBtn) {
@@ -256,6 +315,10 @@ document.getElementById("addRowBtn").addEventListener("click", addRow);
 
 function resetRowPricing(row) {
   row.querySelector(".row-listprice").value = 0;
+  row.querySelector(".row-discount").value = 0;
+  row.dataset.discountType = "";
+  row.dataset.discountPercent = 0;
+  row.dataset.discountFlat = 0;
   recalcRow(row);
 }
 
@@ -272,23 +335,98 @@ function recalcRow(row) {
 
 function recalcGrandTotal() {
   var rows = document.querySelectorAll("#itemRows tr");
-  var subTotal = 0, discountTotal = 0, taxTotal = 0;
+  var subTotal = 0, taxTotal = 0;
 
   rows.forEach(function (row) {
     subTotal += parseFloat(row.querySelector(".row-listprice").value) || 0;
-    discountTotal += parseFloat(row.querySelector(".row-discount").value) || 0;
     taxTotal += parseFloat(row.querySelector(".row-tax").value) || 0;
   });
 
+  document.getElementById("subTotal").value = subTotal.toFixed(2);
+  document.getElementById("taxTotal").value = taxTotal.toFixed(2);
+
+  // Overall discount is set via the pencil/modal, not summed from rows.
+  // If it was set as a percentage, keep it in sync as Sub Total changes.
+  if (window.grandDiscountType === "percentage") {
+    var pct = parseFloat(window.grandDiscountPercent) || 0;
+    document.getElementById("discountTotal").value = (subTotal * pct / 100).toFixed(2);
+  }
+
+  var discountTotal = parseFloat(document.getElementById("discountTotal").value) || 0;
   var adjustment = parseFloat(document.getElementById("adjustment").value) || 0;
   var grandTotal = subTotal - discountTotal + taxTotal + adjustment;
 
-  document.getElementById("subTotal").value = subTotal.toFixed(2);
-  document.getElementById("discountTotal").value = discountTotal.toFixed(2);
-  document.getElementById("taxTotal").value = taxTotal.toFixed(2);
   document.getElementById("grandTotal").value = grandTotal.toFixed(2);
 }
 document.getElementById("adjustment").addEventListener("input", recalcGrandTotal);
+
+function openDiscountModal(target) {
+  discountModalTarget = target;
+  var type, percent, flat;
+
+  if (target === "grand") {
+    type = window.grandDiscountType || "percentage";
+    percent = window.grandDiscountPercent || 0;
+    flat = window.grandDiscountFlat || 0;
+  } else {
+    type = target.dataset.discountType || "percentage";
+    percent = target.dataset.discountPercent || 0;
+    flat = target.dataset.discountFlat || 0;
+  }
+
+  document.getElementById("discountTypePercentage").checked = (type !== "flat");
+  document.getElementById("discountTypeFlat").checked = (type === "flat");
+  document.getElementById("discountModalPercentInput").value = percent;
+  document.getElementById("discountModalFlatInput").value = flat;
+  toggleDiscountModalInputs();
+  document.getElementById("discountModalOverlay").style.display = "flex";
+}
+
+function toggleDiscountModalInputs() {
+  var isPercent = document.getElementById("discountTypePercentage").checked;
+  document.getElementById("discountModalPercentInput").disabled = !isPercent;
+  document.getElementById("discountModalFlatInput").disabled = isPercent;
+}
+
+document.getElementById("discountTypePercentage").addEventListener("change", toggleDiscountModalInputs);
+document.getElementById("discountTypeFlat").addEventListener("change", toggleDiscountModalInputs);
+
+document.getElementById("grandDiscountEditBtn").addEventListener("click", function () {
+  openDiscountModal("grand");
+});
+
+document.getElementById("discountModalCancelBtn").addEventListener("click", function () {
+  document.getElementById("discountModalOverlay").style.display = "none";
+  discountModalTarget = null;
+});
+
+document.getElementById("discountModalDoneBtn").addEventListener("click", function () {
+  var isPercent = document.getElementById("discountTypePercentage").checked;
+  var percent = parseFloat(document.getElementById("discountModalPercentInput").value) || 0;
+  var flat = parseFloat(document.getElementById("discountModalFlatInput").value) || 0;
+
+  if (discountModalTarget === "grand") {
+    var subTotal = parseFloat(document.getElementById("subTotal").value) || 0;
+    var amount = isPercent ? (subTotal * percent / 100) : flat;
+    window.grandDiscountType = isPercent ? "percentage" : "flat";
+    window.grandDiscountPercent = percent;
+    window.grandDiscountFlat = flat;
+    document.getElementById("discountTotal").value = amount.toFixed(2);
+    recalcGrandTotal();
+  } else if (discountModalTarget) {
+    var row = discountModalTarget;
+    var listPrice = parseFloat(row.querySelector(".row-listprice").value) || 0;
+    var rowAmount = isPercent ? (listPrice * percent / 100) : flat;
+    row.dataset.discountType = isPercent ? "percentage" : "flat";
+    row.dataset.discountPercent = percent;
+    row.dataset.discountFlat = flat;
+    row.querySelector(".row-discount").value = rowAmount.toFixed(2);
+    recalcRow(row);
+  }
+
+  document.getElementById("discountModalOverlay").style.display = "none";
+  discountModalTarget = null;
+});
 
 document.getElementById("cancelBtn").addEventListener("click", function () {
   ZOHO.CRM.UI.Popup.close();
