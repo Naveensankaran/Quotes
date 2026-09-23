@@ -503,7 +503,7 @@ document.getElementById("saveBtn").addEventListener("click", function () {
       // The Deluge function looks up the Lead's own Email field and
       // sends the cost sheet PDF there — the widget never has to know
       // or carry the address itself.
-      return ZOHO.CRM.FUNCTIONS.execute("sendCostSheetPdfEmail", {
+      return ZOHO.CRM.FUNCTIONS.execute("quotstest", {
         arguments: JSON.stringify({
           quoteId: newQuoteId,
           leadId: leadEntityId
