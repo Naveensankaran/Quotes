@@ -72,6 +72,11 @@
     <input type="text" id="projectDisplay" disabled />
   </div>
 
+  <div class="field-row">
+    <label>Cost sheet PDF will be emailed to (Lead's email)</label>
+    <input type="email" id="leadEmailDisplay" disabled />
+  </div>
+
   <h4>Quoted Items</h4>
   <table id="itemsTable">
     <thead>
@@ -156,6 +161,9 @@ function loadLeadProject() {
   ZOHO.CRM.API.getRecord({ Entity: "Leads", RecordID: leadEntityId })
     .then(function (res) {
       var lead = res.data[0];
+      // Adjust "Email" below if this org's Lead layout uses a different
+      // API name for the email field.
+      document.getElementById("leadEmailDisplay").value = lead.Email || "(no email on this Lead)";
       var proj = lead.Project;
       if (proj) {
         leadProject = { id: proj.id, name: proj.name };
@@ -481,11 +489,35 @@ document.getElementById("saveBtn").addEventListener("click", function () {
   recordData[LEAD_LOOKUP_API_NAME] = { id: leadEntityId };
 
   ZOHO.CRM.API.insertRecord({ Entity: "Quotes", APIData: recordData })
-    .then(function () {
-      showStatus("Quote created successfully.");
-      ZOHO.CRM.UI.Popup.close();
+    .then(function (res) {
+      var result = res && res.data && res.data[0];
+      if (!result || result.code !== "SUCCESS") {
+        var msg = (result && result.message) || "Unknown error creating Quote.";
+        showStatus("Save failed: " + msg);
+        return Promise.reject(new Error("handled"));
+      }
+
+      var newQuoteId = result.details.id;
+      showStatus("Quote created. Emailing cost sheet PDF to the Lead...");
+
+      // The Deluge function looks up the Lead's own Email field and
+      // sends the cost sheet PDF there — the widget never has to know
+      // or carry the address itself.
+      return ZOHO.CRM.FUNCTIONS.execute("sendCostSheetPdfEmail", {
+        arguments: JSON.stringify({
+          quoteId: newQuoteId,
+          leadId: leadEntityId
+        })
+      }).then(function () {
+        showStatus("Quote created and cost sheet PDF emailed to the Lead.");
+        ZOHO.CRM.UI.Popup.close();
+      }).catch(function (err) {
+        // Quote is already saved — only the email step failed.
+        showStatus("Quote saved, but emailing the cost sheet failed: " + JSON.stringify(err));
+      });
     })
     .catch(function (err) {
+      if (err && err.message === "handled") { return; } // already shown above
       showStatus("Save failed: " + JSON.stringify(err));
     });
 });
